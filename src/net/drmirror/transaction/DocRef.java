@@ -20,6 +20,12 @@ public class DocRef {
         this._id = _id;
     }
     
+    public String getDbName() { return dbName; };
+    public String getCollectionName() { return collectionName; };
+    public Object getId() { return dbName; };
+    public Document getDocument() { return d; };
+    public void setDocument(Document d) { this.d = d; }
+    
     public Document find (MongoClient c) {
         if (d == null) {
             d = find(c.getDatabase(dbName));
