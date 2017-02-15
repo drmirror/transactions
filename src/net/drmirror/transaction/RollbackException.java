@@ -5,6 +5,7 @@ public class RollbackException extends RuntimeException {
     private Exception cause = null;
     
     public RollbackException(Exception cause) {
+        super("cause: " + cause.getMessage());
         this.cause = cause;
     }
 

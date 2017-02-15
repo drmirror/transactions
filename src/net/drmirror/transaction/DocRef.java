@@ -22,7 +22,7 @@ public class DocRef {
     
     public String getDbName() { return dbName; };
     public String getCollectionName() { return collectionName; };
-    public Object getId() { return dbName; };
+    public Object getId() { return _id; };
     public Document getDocument() { return d; };
     public void setDocument(Document d) { this.d = d; }
     

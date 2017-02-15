@@ -20,7 +20,7 @@ public abstract class Transaction {
     // INITIAL -> PREPARING -> APPLYING -> RELEASING -> COMPLETE // CANCELLING -> CANCELLED
     
     public enum Status {
-        INITIAL, PENDING, APPLIED, CANCELLED
+        INITIAL, PREPARING, APPLYING, RELEASING, COMPLETE, CANCELLING, CANCELLED
     }
     
     public static final String LOCK_FIELD = "lock";
@@ -40,6 +40,10 @@ public abstract class Transaction {
         transactionCollection = client.getDatabase(dbName).getCollection(transactionCollectionName);
         this.status = Status.INITIAL;
         transaction = new Document("_id", new ObjectId());
+    }
+    
+    public Object getId() {
+        return transaction.get("_id");
     }
     
     protected void addDocument(String dbName, String collectionName, Object id) {
@@ -111,7 +115,7 @@ public abstract class Transaction {
                 getCollection(d).findOneAndUpdate(
                     new Document("_id", d.getId())
                          .append(LOCK_FIELD, ts),
-                    new Document("$set", new Document(LOCK_FIELD, 1))
+                    new Document("$unset", new Document(LOCK_FIELD, 1))
                 );
             }
         }
@@ -172,21 +176,50 @@ public abstract class Transaction {
         } else {
             switch (status) {
             case INITIAL:
-                backupDocuments();
-                saveTransaction(Status.PENDING);
-            case PENDING:
                 try {
-                    apply(getDocuments());
-                    saveDocuments();
-                    saveTransaction(Status.APPLIED);
+                    saveTransaction(Status.PREPARING);
+                    lockDocuments();
+                    backupDocuments();
+                    saveTransaction(Status.APPLYING);
                 } catch (Exception ex) {
                     rollback();
                     throw new RollbackException(ex);
                 }
-            case APPLIED:
+            case APPLYING:
+                try {
+                    apply(getDocuments());
+                    saveDocuments();
+                    saveTransaction(Status.RELEASING);
+                } catch (Exception ex) {
+                    rollback();
+                    throw new RollbackException(ex);
+                }
+            case RELEASING:
+                releaseDocuments();
+                saveTransaction(Status.COMPLETE);
+            case COMPLETE:
                 return true;
-            case CANCELLED:
+            case CANCELLING:
+                rollback();
                 return false;
+                
+                
+//            case INITIAL:
+//                backupDocuments();
+//                saveTransaction(Status.PENDING);
+//            case PENDING:
+//                try {
+//                    apply(getDocuments());
+//                    saveDocuments();
+//                    saveTransaction(Status.APPLIED);
+//                } catch (Exception ex) {
+//                    rollback();
+//                    throw new RollbackException(ex);
+//                }
+//            case APPLIED:
+//                return true;
+//            case CANCELLED:
+//                return false;
             }
         }
         return false;
@@ -199,10 +232,26 @@ public abstract class Transaction {
             switch (status) {
             case INITIAL:
                 return;
-            case PENDING:
-                cancel();
+            case PREPARING:
+                releaseDocuments();
                 saveTransaction(Status.CANCELLED);
-            case APPLIED:
+                return;
+            case APPLYING:
+                saveTransaction(Status.CANCELLING);
+                cancel();
+                releaseDocuments();
+                saveTransaction(Status.CANCELLED);
+                return;
+            case RELEASING:
+                releaseDocuments();
+                saveTransaction(Status.CANCELLED);
+                return;
+            case COMPLETE:
+                return;
+            case CANCELLING:
+                cancel();
+                releaseDocuments();
+                saveTransaction(Status.CANCELLED);
                 return;
             case CANCELLED:
                 return;

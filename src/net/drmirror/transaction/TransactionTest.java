@@ -1,7 +1,10 @@
 package net.drmirror.transaction;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.fail;
+
+import java.util.Date;
 
 import org.bson.Document;
 import org.junit.Test;
@@ -12,6 +15,8 @@ import com.mongodb.client.model.CreateCollectionOptions;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.ValidationLevel;
 import com.mongodb.client.model.ValidationOptions;
+
+import net.drmirror.transaction.Transaction.Status;
 
 
 
@@ -70,6 +75,12 @@ public class TransactionTest {
     private void assertValue (int _id, Object value) {
         Document d = dataCollection().find(Filters.eq("_id", _id)).first();
         assertEquals(value, d.get("value"));
+        assertFalse(d.containsKey("lock"));
+    }
+    
+    private void assertStatus (Transaction t, Transaction.Status s) {
+        Document d = transactionCollection().find(Filters.eq("_id", t.getId())).first();
+        assertEquals(s.toString().toLowerCase(), d.getString("status"));
     }
     
     @Test
@@ -83,10 +94,13 @@ public class TransactionTest {
         t.execute();
         assertValue(1, 90);
         assertValue(2, 60);
+        assertStatus(t,Status.COMPLETE);
+        
         t = new TestTransaction(client(), a.get("_id"), b.get("_id"), 10);
         t.execute();
         assertValue(1, 80);
         assertValue(2, 70);
+        assertStatus(t,Status.COMPLETE);
     }
     
     @Test
@@ -100,8 +114,9 @@ public class TransactionTest {
         try {
             t.execute();
             fail ("should have raised an exception");
-        } catch (RuntimeException ex) {
-            if (!ex.getMessage().startsWith("document missing")) fail ("wrong exception");
+        } catch (RollbackException ex) {
+            if (!ex.getMessage().startsWith("cause: cannot find document")) fail ("wrong exception");
+            assertStatus(t, Status.CANCELLED);
         }
     }
     
@@ -121,6 +136,7 @@ public class TransactionTest {
         }
         assertValue(1, 100);
         assertValue(2, "dummy");
+        assertStatus(t, Status.CANCELLED);
     }
     
     @Test
@@ -139,7 +155,30 @@ public class TransactionTest {
         dataCollection().insertOne(a);
         dataCollection().insertOne(b);
         Transaction t = new TestTransaction(client(), a.get("_id"), b.get("_id"), 10);
-        t.execute();
+        try {
+            t.execute();
+            fail ("should have raised a RollbackException");
+        } catch (RollbackException ex) {
+            // ok
+        }
+        assertValue(1,20);
+        assertValue(2,100);
+        assertStatus(t, Status.CANCELLED);
     }
 
+    @Test
+    public void testDocumentAlreadyLocked() {
+        dataCollection().drop();
+        Document a = new Document("_id", 1).append("value", 50);
+        Document b = new Document("_id", 2).append("value", 70).append("lock", new Date());
+        dataCollection().insertOne(a);
+        dataCollection().insertOne(b);
+        Transaction t = new TestTransaction(client(), a.get("_id"), b.get("_id"), 10);
+        t.execute();
+
+        assertValue(1, 40);
+        assertValue(2, 80);
+        assertStatus(t, Status.COMPLETE);
+    }
+    
 }
