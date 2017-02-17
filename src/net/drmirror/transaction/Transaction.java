@@ -51,6 +51,7 @@ public abstract class Transaction {
     }
     
     protected void saveTransaction(Status newStatus) {
+        transaction.put("data", allDocRefs());
         transaction.put("status", newStatus.name().toLowerCase());
         transaction.put("ts", new Date());
         transactionCollection.replaceOne(
@@ -61,6 +62,14 @@ public abstract class Transaction {
         status = newStatus;
     }
    
+    private List<Document> allDocRefs() {
+        List<Document> result = new ArrayList<Document>();
+        for (DocRef d : data) {
+            result.add(d.toRef());
+        }
+        return result;
+    }
+    
     protected void lockDocuments() {
         for (DocRef d : data) {
             if (!lockDocument(d)) throw new RuntimeException("failed to lock document");

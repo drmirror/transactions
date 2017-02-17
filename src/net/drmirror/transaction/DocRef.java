@@ -20,11 +20,18 @@ public class DocRef {
         this._id = _id;
     }
     
+    public DocRef (Document ref) {
+        this (ref.getString("db"), ref.getString("collection"), ref.get("_id"));
+    }
+    
     public String getDbName() { return dbName; };
     public String getCollectionName() { return collectionName; };
     public Object getId() { return _id; };
     public Document getDocument() { return d; };
     public void setDocument(Document d) { this.d = d; }
+    public Document toRef() {
+        return new Document ("db", dbName).append("collection", collectionName).append("_id", _id);
+    }
     
     public Document find (MongoClient c) {
         if (d == null) {
